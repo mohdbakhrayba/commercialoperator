@@ -14,12 +14,16 @@ from ledger.checkout.utils import calculate_excl_gst
 import logging
 logger = logging.getLogger(__name__)
 
+
+def expiry_time():
+    return timezone.now() + timedelta(minutes=30)
+
 class Payment(RevisionedMixin):
 
     send_invoice = models.BooleanField(default=False)
     confirmation_sent = models.BooleanField(default=False)
-    created = models.DateTimeField(default=timezone.now())
-    expiry_time = models.DateTimeField(default=timezone.now() + timedelta(minutes=30), blank=True, null=True)
+    created = models.DateTimeField(auto_now_add=True)
+    expiry_time = models.DateTimeField(default=expiry_time, blank=True, null=True)
 
     class Meta:
         app_label = 'commercialoperator'
@@ -205,7 +209,7 @@ class Booking(Payment):
         return self.park_bookings.last().created.date()
 
 class ParkBooking(RevisionedMixin):
-    created = models.DateTimeField(default=timezone.now())
+    created = models.DateTimeField(auto_now_add=True)
     booking = models.ForeignKey(Booking, on_delete=models.PROTECT, blank=True, null=True, related_name='park_bookings')
     park = models.ForeignKey(Park, related_name='bookings')
     arrival = models.DateField()
@@ -335,11 +339,13 @@ class ApplicationFee(Payment):
     PAYMENT_TYPE_RECEPTION = 1
     PAYMENT_TYPE_BLACK = 2
     PAYMENT_TYPE_TEMPORARY = 3
+    PAYMENT_TYPE_ZERO = 4
     PAYMENT_TYPE_CHOICES = (
         (PAYMENT_TYPE_INTERNET, 'Internet booking'),
         (PAYMENT_TYPE_RECEPTION, 'Reception booking'),
         (PAYMENT_TYPE_BLACK, 'Black booking'),
         (PAYMENT_TYPE_TEMPORARY, 'Temporary reservation'),
+        (PAYMENT_TYPE_ZERO, 'No payment'), # 100% Discount
 #        (4, 'Cancelled Booking'),
 #        (5, 'Changed Booking')
     )
@@ -362,8 +368,21 @@ class ApplicationFeeInvoice(RevisionedMixin):
     def __str__(self):
         return 'Application Fee {} : Invoice #{}'.format(self.id,self.invoice_reference)
 
+    @property
+    def invoice(self):
+        try:
+            invoice = Invoice.objects.get(reference=self.invoice_reference)
+            return invoice
+        except Invoice.DoesNotExist:
+            pass
+        return False
+
     class Meta:
         app_label = 'commercialoperator'
+
+    @property
+    def payment_amount(self):
+        return self.invoice.amount
 
     @property
     def active(self):
@@ -381,5 +400,6 @@ reversion.register(ParkBooking)
 reversion.register(BookingInvoice)
 reversion.register(ApplicationFee, follow=['application_fee_invoices'])
 reversion.register(ApplicationFeeInvoice)
+#reversion.register(ApplicationFeeInvoice, follow=['application_fee_discounts'])
 
 

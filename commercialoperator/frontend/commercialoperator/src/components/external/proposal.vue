@@ -148,7 +148,13 @@ export default {
   methods: {
     submit_text: function() {
       let vm = this;
-      return vm.proposal.fee_paid ? 'Resubmit' : 'Pay and Submit';
+      if(vm.proposal.fee_paid) {
+          return 'Resubmit';
+      } else if (vm.proposal.allow_full_discount)  {
+          return 'Submit';
+      } else {
+          return 'Pay and Submit';
+      }
     },
     save_applicant_data:function(){
       let vm=this;
@@ -159,7 +165,8 @@ export default {
         vm.$refs.proposal_tclass.$refs.profile.updateContact();
       }
       if(vm.proposal.applicant_type == 'ORG'){
-        vm.$refs.proposal_tclass.$refs.organisation.updateDetails();
+        vm.$refs.proposal_tclass.$refs.organisation.updateDetails_noconfirm();
+        //vm.$refs.proposal_tclass.$refs.organisation.updateDetails();
         vm.$refs.proposal_tclass.$refs.organisation.updateAddress();
       }
     },

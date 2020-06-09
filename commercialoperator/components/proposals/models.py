@@ -10,6 +10,7 @@ from django.dispatch import receiver
 from django.db.models.signals import pre_delete
 from django.utils.encoding import python_2_unicode_compatible
 from django.core.exceptions import ValidationError, MultipleObjectsReturned
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.contrib.postgres.fields.jsonb import JSONField
 from django.utils import timezone
 from django.contrib.sites.models import Site
@@ -601,6 +602,42 @@ class Proposal(DirtyFieldsMixin, RevisionedMixin):
         else:
             return int(period.split('_')[0]) * self.application_type.licence_fee_1yr
 
+    def reset_licence_discount(self, user):
+        """ reset when licence is issued"""
+        org = self.org_applicant
+        if self.application_type.name=='T Class' and org and org.licence_discount > 0:
+            if org.licence_discount > 0:
+                lic_disc = self.fee_discounts.get(discount_type=ApplicationFeeDiscount.DISCOUNT_TYPE_LICENCE)
+                lic_disc.reset_date = timezone.now()
+                lic_disc.save()
+            org.apply_licence_discount = False
+            org.licence_discount = 0.0
+            org.save()
+
+    def reset_application_discount(self, user):
+        """ reset when application is submitted"""
+        org = self.org_applicant
+        if self.application_type.name=='T Class' and org:
+            if org.application_discount > 0 or org.licence_discount > 0:
+                app_disc = ApplicationFeeDiscount.objects.create(proposal=self, discount_type=ApplicationFeeDiscount.DISCOUNT_TYPE_APPLICATION, discount=org.application_discount, reset_date=timezone.now(), user=user)
+                lic_disc = ApplicationFeeDiscount.objects.create(proposal=self, discount_type=ApplicationFeeDiscount.DISCOUNT_TYPE_LICENCE, discount=org.licence_discount, user=user)
+
+            org.apply_application_discount = False
+            org.application_discount = 0.0
+            org.save()
+
+    @property
+    def allow_full_discount(self):
+        """ checks if a fee is payable after discount is applied """
+        org = self.org_applicant
+        if self.application_type.name=='T Class' and self.other_details.preferred_licence_period and org:
+            #import ipdb; ipdb.set_trace()
+            application_fee = max( round(float(self.application_type.application_fee) - org.application_discount, 2), 0)
+            licence_fee = max( round(float(self.licence_fee_amount) - org.licence_discount, 2), 0)
+            if licence_fee == 0 and application_fee == 0:
+                return True
+        return False
+
     @property
     def reference(self):
         return '{}-{}'.format(self.lodgement_number, self.lodgement_sequence)
@@ -844,7 +881,7 @@ class Proposal(DirtyFieldsMixin, RevisionedMixin):
             return True
         return False
 
-    
+
     def search_data_orig(self):
         search_data={}
         parks=[]
@@ -890,7 +927,7 @@ class Proposal(DirtyFieldsMixin, RevisionedMixin):
             search_data.update({'accreditations':[]})
         return search_data
 
-    
+
     @property
     def search_data(self):
         search_data={}
@@ -900,7 +937,7 @@ class Proposal(DirtyFieldsMixin, RevisionedMixin):
         vehicles=[]
         vessels=[]
         accreditations=[]
-        
+
         land_parks_name=list(self.parks.filter(park__park_type='land').values_list('park__name', flat=True))
         land_activities_name=list(self.parks.filter(park__park_type='land', activities__isnull=False).values_list('activities__activity__name', flat=True))
         marine_parks_name=list(self.parks.filter(park__park_type='marine').values_list('park__name', flat=True))
@@ -910,7 +947,7 @@ class Proposal(DirtyFieldsMixin, RevisionedMixin):
         vehicles=list(self.vehicles.all().values_list('rego', flat=True))
         vessels=list(self.vessels.all().values_list('spv_no', flat=True))
 
-        parks=land_parks_name + marine_parks_name 
+        parks=land_parks_name + marine_parks_name
         activities = land_activities_name + marine_activities_name + trail_activities_name
 
 
@@ -1750,6 +1787,8 @@ class Proposal(DirtyFieldsMixin, RevisionedMixin):
                                 previous_approval.replaced_by = approval
                                 previous_approval.save()
 
+                            self.reset_licence_discount(request.user)
+
                     elif self.proposal_type == 'amendment':
                         if self.previous_application:
                             previous_approval = self.previous_application.approval
@@ -1785,6 +1824,7 @@ class Proposal(DirtyFieldsMixin, RevisionedMixin):
                                 #'extracted_fields' = JSONField(blank=True, null=True)
                             }
                         )
+                        self.reset_licence_discount(request.user)
                     # Generate compliances
                     from commercialoperator.components.compliances.models import Compliance, ComplianceUserAction
                     if created:
@@ -1799,8 +1839,6 @@ class Proposal(DirtyFieldsMixin, RevisionedMixin):
                         self.generate_compliances(approval, request)
                         # send the doc and log in approval and org
                     else:
-                        #approval.replaced_by = request.user
-                        #approval.replaced_by = self.approval
                         # Generate the document
                         approval.generate_doc(request.user)
                         #Delete the future compliances if Approval is reissued and generate the compliances again.
@@ -2004,12 +2042,52 @@ class Proposal(DirtyFieldsMixin, RevisionedMixin):
                 #proposal.save()
             return proposal
 
+
+class ApplicationFeeDiscount(RevisionedMixin):
+    DISCOUNT_TYPE_APPLICATION = 0
+    DISCOUNT_TYPE_LICENCE = 1
+    DISCOUNT_TYPE_CHOICES = (
+        (DISCOUNT_TYPE_APPLICATION, 'Discount application'),
+        (DISCOUNT_TYPE_LICENCE, 'Discount licence'),
+    )
+
+    proposal = models.ForeignKey(Proposal, related_name='fee_discounts', null=True)
+    discount_type = models.CharField(max_length=40, choices=DISCOUNT_TYPE_CHOICES)
+    discount = models.FloatField(validators=[MinValueValidator(0.0)])
+    created = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(EmailUser,on_delete=models.PROTECT, related_name='created_by_fee_discount')
+    reset_date = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self):
+        return '{} - {}% - {}'.format(self.get_discount_type_display(), self.discount, self.proposal.fee_invoice_reference)
+
+    @property
+    def invoice(self):
+        try:
+            invoice = Invoice.objects.get(reference=self.proposal.fee_invoice_reference)
+            return invoice
+        except Invoice.DoesNotExist:
+            pass
+        return False
+
+    class Meta:
+        app_label = 'commercialoperator'
+
+    @property
+    def payment_amount(self):
+        return self.invoice.amount
+
+    class Meta:
+        app_label = 'commercialoperator'
+
+
 class ProposalLogDocument(Document):
     log_entry = models.ForeignKey('ProposalLogEntry',related_name='documents')
     _file = models.FileField(upload_to=update_proposal_comms_log_filename, max_length=512)
 
     class Meta:
         app_label = 'commercialoperator'
+
 
 class ProposalLogEntry(CommunicationsLogEntry):
     proposal = models.ForeignKey(Proposal, related_name='comms_logs')
@@ -3618,9 +3696,10 @@ import reversion
 reversion.register(Referral, follow=['referral_documents', 'assessment'])
 reversion.register(ReferralDocument, follow=['referral_document'])
 
-#reversion.register(Proposal, follow=['documents', 'onhold_documents','required_documents','qaofficer_documents','comms_logs','other_details', 'parks', 'trails', 'vehicles', 'vessels', 'proposalrequest_set','proposaldeclineddetails', 'proposalonhold', 'requirements', 'referrals', 'qaofficer_referrals', 'compliances', 'referrals', 'approvals', 'park_entries', 'assessment', 'bookings', 'application_fees'])
-reversion.register(Proposal, follow=['documents', 'onhold_documents','required_documents','qaofficer_documents','comms_logs','other_details', 'parks', 'trails', 'vehicles', 'vessels', 'proposalrequest_set','proposaldeclineddetails', 'proposalonhold', 'requirements', 'referrals', 'qaofficer_referrals', 'compliances', 'referrals', 'approvals', 'park_entries', 'assessment'])
+#reversion.register(Proposal, follow=['documents', 'onhold_documents','required_documents','qaofficer_documents','comms_logs','other_details', 'parks', 'trails', 'vehicles', 'vessels', 'proposalrequest_set','proposaldeclineddetails', 'proposalonhold', 'requirements', 'referrals', 'qaofficer_referrals', 'compliances', 'referrals', 'approvals', 'park_entries', 'assessment',created_by cation_feesi''bookings', 'application_fees'])
+reversion.register(Proposal, follow=['documents', 'onhold_documents','required_documents','qaofficer_documents','comms_logs','other_details', 'parks', 'trails', 'vehicles', 'vessels', 'proposalrequest_set','proposaldeclineddetails', 'proposalonhold', 'requirements', 'referrals', 'qaofficer_referrals', 'compliances', 'referrals', 'approvals', 'park_entries', 'assessment', 'fee_discounts'])
 reversion.register(ProposalDocument, follow=['onhold_documents'])
+reversion.register(ApplicationFeeDiscount)
 reversion.register(OnHoldDocument)
 reversion.register(ProposalRequest)
 reversion.register(ProposalRequiredDocument)

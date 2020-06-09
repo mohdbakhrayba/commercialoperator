@@ -31,6 +31,7 @@
                                                 <input disabled type="text" class="form-control" name="applicantABN" placeholder="" v-model="proposal.org_applicant.abn" style="width: 100%">
                                             </div>
                                           </div>
+
                                       </form>
                                 </div>
                                 <div v-if="applicantType == 'SUB'" class="panel-body panel-collapse collapse in" :id="detailsBody">

@@ -31,3 +31,14 @@ def dept_support_phone():
 def can_show_tests():
     return settings.SHOW_TESTS_URL
 
+@register.filter
+def total_line_price(price, qty):
+    return "{:.2f}".format(round(price * qty, 2))
+
+@register.filter
+def basket_total_price(lines):
+    total = 0.00
+    for line in lines:
+        total += line['price_incl_tax'] * line['quantity']
+    return "{:.2f}".format(round(total, 2))
+

@@ -225,7 +225,7 @@ class ProposalFilterBackend(DatatablesFilterBackend):
                     if payment_status.lower() == 'unpaid':
                         # for deferred payment where invoice not yet created (monthly invoicing), append the following qs
                         queryset = queryset | ParkBooking.objects.filter(booking__invoices__isnull=True)
-                               
+
         date_from = request.GET.get('date_from')
         date_to = request.GET.get('date_to')
         if queryset.model is Proposal:

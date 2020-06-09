@@ -92,6 +92,10 @@ class OrganisationSerializer(serializers.ModelSerializer):
     delegates = serializers.SerializerMethodField(read_only=True)
     organisation = LedgerOrganisationSerializer()
     trading_name = serializers.SerializerMethodField(read_only=True)
+    apply_application_discount = serializers.SerializerMethodField(read_only=True)
+    application_discount = serializers.SerializerMethodField(read_only=True)
+    apply_licence_discount = serializers.SerializerMethodField(read_only=True)
+    licence_discount = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Organisation
@@ -106,7 +110,24 @@ class OrganisationSerializer(serializers.ModelSerializer):
             'phone_number',
             'pins',
             'delegates',
+
+            'apply_application_discount',
+            'application_discount',
+            'apply_licence_discount',
+            'licence_discount',
         )
+
+    def get_apply_application_discount(self, obj):
+        return obj.apply_application_discount
+
+    def get_application_discount(self, obj):
+        return obj.application_discount
+
+    def get_apply_licence_discount(self, obj):
+        return obj.apply_licence_discount
+
+    def get_licence_discount(self, obj):
+        return obj.licence_discount
 
     def get_delegates(self, obj):
         """
@@ -191,7 +212,28 @@ class MyOrganisationsSerializer(serializers.ModelSerializer):
 class DetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = ledger_organisation
-        fields = ('id','name', 'trading_name', 'email')
+        fields = (
+            'id',
+            'name',
+            'trading_name',
+            'email',
+#            'apply_application_discount',
+#            'application_discount',
+#            'apply_licence_discount',
+#            'licence_discount',
+        )
+
+class SaveDiscountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Organisation
+        fields = (
+            'id',
+            'apply_application_discount',
+            'application_discount',
+            'apply_licence_discount',
+            'licence_discount',
+        )
+
 
 class OrganisationContactSerializer(serializers.ModelSerializer):
     user_status= serializers.SerializerMethodField()

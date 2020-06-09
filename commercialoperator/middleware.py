@@ -24,7 +24,7 @@ class FirstTimeNagScreenMiddleware(object):
                 path_logout = reverse('accounts:logout')
                 if request.path not in (path_ft, path_logout):
                     return redirect(reverse('first_time')+"?next="+urlquote_plus(request.get_full_path()))
-                    
+
 
 class BookingTimerMiddleware(object):
     def process_request(self, request):
@@ -38,7 +38,7 @@ class BookingTimerMiddleware(object):
                 # no idea what object is in self.request.session['ps_booking'], ditch it
                 del request.session['cols_app_invoice']
                 return
-            if application_fee.payment_type != 3:
+            if application_fee.payment_type != ApplicationFee.PAYMENT_TYPE_TEMPORARY:
                 # booking in the session is not a temporary type, ditch it
                 del request.session['cols_app_invoice']
         return

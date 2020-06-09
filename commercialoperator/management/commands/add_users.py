@@ -20,6 +20,7 @@ class Command(BaseCommand):
 
         #reader=OrganisationReader('commercialoperator/utils/csv/CommercialLicencesMigration_09Dec2019.csv')
         #reader=OrganisationReader('commercialoperator/utils/csv/EClass_licences_02Dec2019.csv')
-        reader=OrganisationReader('commercialoperator/utils/csv/CommercialLicencesMigration_07Jan2020_final.csv')
+        #reader=OrganisationReader('commercialoperator/utils/csv/CommercialLicencesMigration_07Jan2020_final.csv')
+        reader=OrganisationReader('commercialoperator/utils/csv/Commercial-RATIS-Migration-20200605.csv')
         reader.add_users()
 

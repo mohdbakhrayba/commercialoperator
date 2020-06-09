@@ -7,6 +7,7 @@ from django.db.models.signals import pre_delete
 from django.utils.encoding import python_2_unicode_compatible
 from django.core.exceptions import ValidationError
 from django.contrib.postgres.fields.jsonb import JSONField
+from django.core.validators import MaxValueValidator, MinValueValidator
 from ledger.accounts.models import Organisation as ledger_organisation
 from ledger.accounts.models import EmailUser,RevisionedMixin #,Document
 from commercialoperator.components.main.models import UserAction,CommunicationsLogEntry, Document
@@ -42,6 +43,12 @@ class Organisation(models.Model):
     monthly_invoicing_allowed = models.BooleanField(default=False)
     monthly_invoicing_period = models.SmallIntegerField('Monthly Invoicing Period (in #days from beginning of the following month)', default=0)
     monthly_payment_due_period = models.SmallIntegerField('Monthly Payment Due Period (in #days from Invoicing Date)', default=20)
+
+    apply_application_discount = models.BooleanField(default=False)
+    application_discount = models.FloatField(default=0.0, validators=[MinValueValidator(0.0)])
+
+    apply_licence_discount = models.BooleanField(default=False)
+    licence_discount = models.FloatField(default=0.0, validators=[MinValueValidator(0.0)])
 
     class Meta:
         app_label = 'commercialoperator'
